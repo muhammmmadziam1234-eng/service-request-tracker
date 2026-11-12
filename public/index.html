@@ -1,0 +1,15 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Service Request Tracker | Relay Desk</title><link rel="stylesheet" href="./style.css"></head>
+<body><header class="top"><div class="wordmark"><span aria-hidden="true">↳</span> Relay Desk</div><span class="demo">Sample workspace</span></header>
+<main><div class="mast"><div><h1>Service requests</h1><p>Track internal requests from intake to resolution.</p></div><button class="primary" id="new">+ New request</button></div>
+<p id="message" role="status"></p>
+<div class="workspace"><section class="queue" aria-labelledby="queue-title">
+<div class="queue-head"><div class="queue-title"><h2 id="queue-title">Request queue</h2><span id="count"></span></div>
+<form id="filters" class="filters"><label>Search<input name="q" type="search" placeholder="Title, requester, or ID" maxlength="100"></label><label>Status<select name="status"><option value="">All statuses</option><option>Open</option><option>Assigned</option><option>In progress</option><option>Completed</option></select></label><button type="submit">Apply</button></form></div>
+<div id="requests"></div></section>
+<section class="record" id="record" aria-label="Request details"><p>Loading requests…</p></section></div>
+</main>
+<dialog id="create" aria-labelledby="dialog-title"><div class="dialog-head"><h2 id="dialog-title">New service request</h2><button id="close" type="button" aria-label="Close form">×</button></div>
+<form id="create-form"><label>Request title<input name="title" required maxlength="100"></label><label>Requester<input name="requester" required maxlength="70"></label>
+<label><span id="create-team-label">Team</span><select name="team" aria-labelledby="create-team-label" required><option value="">Select a team</option><option>Facilities</option><option>IT</option><option>People</option><option>Operations</option></select></label>
+<label>Description<textarea name="description" rows="3" required maxlength="1000"></textarea></label><p id="form-error" role="alert"></p><button type="submit" class="primary">Create request</button></form></dialog>
+<script type="module" src="./app.mjs"></script></body></html>
