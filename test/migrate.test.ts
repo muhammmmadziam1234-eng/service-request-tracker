@@ -1,28 +1,29 @@
-import test from 'node:test';
+import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp, mkdir, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {openStore as openV1} from './fixtures/v1-store.mjs';
-import {migrate, loadMigrations, schemaVersion} from '../migrate.mjs';
+import {migrate, loadMigrations, schemaVersion} from '../src/migrate.ts';
 
 const latest = loadMigrations().length;
 const v1Tables = ['requests', 'activity', 'metadata'];
-async function scratch(t) {
+async function scratch(t: TestContext) {
   const dir = await mkdtemp(join(tmpdir(), 'relay-migrate-'));
   t.after(() => rm(dir, {recursive: true, force: true}));
   return dir;
 }
-const plain = rows => rows.map(row => ({...row}));
+type Row = Record<string, any>;
+const plain = (rows: Row[]): Row[] => rows.map(row => ({...row}));
 // Everything observable in a database: schema text, user_version and every row of every table.
-function dump(db) {
-  const out = {version: schemaVersion(db), schema: plain(db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY name').all())};
-  for (const {name} of db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all())
+function dump(db: DatabaseSync) {
+  const out: Row = {version: schemaVersion(db), schema: plain(db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY name').all())};
+  for (const {name} of db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all() as {name: string}[])
     out[name] = plain(db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all());
   return out;
 }
-const shape = (db, table) => plain(db.prepare(`PRAGMA table_info(${table})`).all());
+const shape = (db: DatabaseSync, table: string) => plain(db.prepare(`PRAGMA table_info(${table})`).all());
 
 test('migration 001 is exactly the schema the version-1 code created', async t => {
   const dir = await scratch(t);
@@ -50,8 +51,8 @@ test('a version-1 database upgrades in place and keeps every row, revision and h
   t.after(() => db.close());
   assert.equal(schemaVersion(db), 0, 'the old code never set user_version');
   const before = Object.fromEntries(v1Tables.map(table => [table, plain(db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all())]));
-  assert.equal(before.requests.length, 6);
-  assert.equal(before.requests.find(r => r.id === id).revision, 3);
+  assert.equal(before.requests!.length, 6);
+  assert.equal(before.requests!.find(r => r.id === id)!.revision, 3);
 
   const first = migrate(db);
   assert.equal(first.from, 0);
@@ -59,8 +60,8 @@ test('a version-1 database upgrades in place and keeps every row, revision and h
   assert.equal(schemaVersion(db), latest);
   for (const table of v1Tables) {
     const after = plain(db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all());
-    assert.equal(after.length, before[table].length, table + ' row count');
-    before[table].forEach((row, i) => { for (const key of Object.keys(row)) assert.deepEqual(after[i][key], row[key], `${table}[${i}].${key}`); });
+    assert.equal(after.length, before[table]!.length, table + ' row count');
+    before[table]!.forEach((row, i) => { for (const key of Object.keys(row)) assert.deepEqual(after[i]![key], row[key], `${table}[${i}].${key}`); });
   }
   assert.equal(plain(db.prepare('SELECT * FROM activity WHERE request_id=? ORDER BY id').all(id)).length, 3);
 
@@ -82,7 +83,7 @@ test('a database from before the revision column existed gains it with the defau
     CREATE INDEX activity_request ON activity(request_id,id); CREATE TABLE metadata (key TEXT PRIMARY KEY);
     INSERT INTO requests VALUES(7,'Old request','Pat','IT','Kept.','Open','2026-01-01T00:00:00.000Z','2026-01-01T00:00:00.000Z');`);
   migrate(db);
-  assert.equal(db.prepare('SELECT revision FROM requests WHERE id=7').get().revision, 1);
+  assert.equal((db.prepare('SELECT revision FROM requests WHERE id=7').get() as {revision: number}).revision, 1);
 });
 
 test('a failing migration is rolled back completely and leaves the version untouched', async t => {
@@ -94,7 +95,7 @@ test('a failing migration is rolled back completely and leaves the version untou
   t.after(() => db.close());
   assert.throws(() => migrate(db, {dir: path}), /002_broken/);
   assert.equal(schemaVersion(db), 1);
-  const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(r => r.name);
+  const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(r => r['name']);
   assert.deepEqual(tables, ['first']);
 });
 
@@ -109,5 +110,5 @@ test('a database newer than the program is refused untouched, and numbering gaps
   db.exec('PRAGMA user_version = 99');
   assert.throws(() => migrate(db), /newer than this program/);
   assert.equal(schemaVersion(db), 99);
-  assert.equal(db.prepare("SELECT count(*) AS n FROM sqlite_master").get().n, 0);
+  assert.equal((db.prepare('SELECT count(*) AS n FROM sqlite_master').get() as {n: number}).n, 0);
 });

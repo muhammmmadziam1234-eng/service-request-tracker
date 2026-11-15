@@ -1,3 +1,4 @@
+// @ts-nocheck (this first-generation page is replaced by the typed UI in a later commit)
 const $=id=>document.getElementById(id);
 const record=$('record'), list=$('requests'), filters=$('filters'), dialog=$('create'), form=$('create-form');
 let selected=1042, latest=0, detailRun=0;
