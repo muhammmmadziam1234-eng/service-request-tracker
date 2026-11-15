@@ -1,0 +1,1584 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Relay Desk API",
+    "version": "2.0.0",
+    "summary": "Internal service desk: requests, comments, assignment and history.",
+    "description": "Sign in with POST /api/login. The response sets the relay_session cookie and returns a csrf_token; send that token in the X-CSRF-Token header on every POST and PATCH. Errors always look like {\"error\":{\"code\",\"message\"}} with a stable code. Every response carries an X-Request-Id and strict security headers. All data in the demo is fictional."
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "tags": [
+    {
+      "name": "auth"
+    },
+    {
+      "name": "requests"
+    },
+    {
+      "name": "users"
+    },
+    {
+      "name": "ops"
+    },
+    {
+      "name": "static",
+      "description": "The web application's files."
+    }
+  ],
+  "paths": {
+    "/healthz": {
+      "get": {
+        "operationId": "healthz",
+        "tags": [
+          "ops"
+        ],
+        "summary": "Liveness: always 200 while the process runs",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Alive.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Alive"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "readyz",
+        "tags": [
+          "ops"
+        ],
+        "summary": "Readiness: 200 only if the database answers",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Ready.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ready"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "operationId": "openapi",
+        "tags": [
+          "ops"
+        ],
+        "summary": "This document",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The OpenAPI document.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenApiDocument"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "operationId": "getIndex",
+        "tags": [
+          "static"
+        ],
+        "summary": "The web application",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The file.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/app.mjs": {
+      "get": {
+        "operationId": "getAppScript",
+        "tags": [
+          "static"
+        ],
+        "summary": "Browser script",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The file.",
+            "content": {
+              "text/javascript": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/style.css": {
+      "get": {
+        "operationId": "getStyles",
+        "tags": [
+          "static"
+        ],
+        "summary": "Stylesheet",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The file.",
+            "content": {
+              "text/css": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/login": {
+      "post": {
+        "operationId": "login",
+        "tags": [
+          "auth"
+        ],
+        "summary": "Sign in",
+        "security": [],
+        "description": "No CSRF token is needed here because there is no session yet; the body must be JSON, which a cross-site form cannot send. An unknown username and a wrong password give the same answer.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed in. The cookie is set and the CSRF token returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            },
+            "headers": {
+              "Set-Cookie": {
+                "$ref": "#/components/headers/SetCookie"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/logout": {
+      "post": {
+        "operationId": "logout",
+        "tags": [
+          "auth"
+        ],
+        "summary": "Sign out and invalidate the session",
+        "security": [
+          {
+            "sessionCookie": [],
+            "csrfToken": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Signed out; the server forgot the session and the cookie is cleared."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/session": {
+      "get": {
+        "operationId": "getSession",
+        "tags": [
+          "auth"
+        ],
+        "summary": "Who am I, and what is my CSRF token",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The signed-in user.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/requests": {
+      "get": {
+        "operationId": "listRequests",
+        "tags": [
+          "requests"
+        ],
+        "summary": "List requests, newest activity first",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          },
+          {
+            "$ref": "#/components/parameters/Sort"
+          },
+          {
+            "$ref": "#/components/parameters/Order"
+          },
+          {
+            "$ref": "#/components/parameters/StatusFilter"
+          },
+          {
+            "$ref": "#/components/parameters/PriorityFilter"
+          },
+          {
+            "$ref": "#/components/parameters/AssigneeFilter"
+          },
+          {
+            "$ref": "#/components/parameters/Search"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of requests. Requesters only ever see their own.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createRequest",
+        "tags": [
+          "requests"
+        ],
+        "summary": "Open a request as the signed-in user",
+        "security": [
+          {
+            "sessionCookie": [],
+            "csrfToken": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestDetail"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/requests/{id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/RequestId"
+        }
+      ],
+      "get": {
+        "operationId": "getRequest",
+        "tags": [
+          "requests"
+        ],
+        "summary": "Read one request with its history and comments",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestDetail"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateRequest",
+        "tags": [
+          "requests"
+        ],
+        "summary": "Change status, priority and/or assignee (agents and admins)",
+        "security": [
+          {
+            "sessionCookie": [],
+            "csrfToken": []
+          }
+        ],
+        "description": "Optimistic concurrency: send the ETag you last read in If-Match. All the fields in one call change together, with one revision bump and one history entry per changed field.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestChanges"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated, or unchanged if every value already matched.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestDetail"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/requests/{id}/comments": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/RequestId"
+        }
+      ],
+      "post": {
+        "operationId": "addComment",
+        "tags": [
+          "requests"
+        ],
+        "summary": "Add a comment (does not need or change the revision)",
+        "security": [
+          {
+            "sessionCookie": [],
+            "csrfToken": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewComment"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The comment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Comment"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/users": {
+      "get": {
+        "operationId": "listUsers",
+        "tags": [
+          "users"
+        ],
+        "summary": "List accounts (admins only)",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Accounts, without password hashes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/assignees": {
+      "get": {
+        "operationId": "listAssignees",
+        "tags": [
+          "users"
+        ],
+        "summary": "Who a request can be assigned to (agents and admins)",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agents and admins.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssigneeList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "relay_session",
+        "description": "Set by POST /api/login. HttpOnly, SameSite=Strict."
+      },
+      "csrfToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-CSRF-Token",
+        "description": "The csrf_token from login or GET /api/session. Required with the cookie on every POST and PATCH."
+      }
+    },
+    "parameters": {
+      "RequestId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "The number after SR-.",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9999999999
+        }
+      },
+      "IfMatch": {
+        "name": "If-Match",
+        "in": "header",
+        "required": true,
+        "description": "The current ETag of the request.",
+        "schema": {
+          "type": "string",
+          "pattern": "^\"[1-9][0-9]*\"$"
+        }
+      },
+      "Limit": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "description": "Page size.",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20
+        }
+      },
+      "Offset": {
+        "name": "offset",
+        "in": "query",
+        "required": false,
+        "description": "Items to skip.",
+        "schema": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        }
+      },
+      "Sort": {
+        "name": "sort",
+        "in": "query",
+        "required": false,
+        "description": "Sort key. Priority ranks Urgent above Low.",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "updated",
+            "created",
+            "priority"
+          ],
+          "default": "updated"
+        }
+      },
+      "Order": {
+        "name": "order",
+        "in": "query",
+        "required": false,
+        "description": "Sort direction.",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "asc",
+            "desc"
+          ],
+          "default": "desc"
+        }
+      },
+      "StatusFilter": {
+        "name": "status",
+        "in": "query",
+        "required": false,
+        "description": "Only this status.",
+        "schema": {
+          "$ref": "#/components/schemas/Status"
+        }
+      },
+      "PriorityFilter": {
+        "name": "priority",
+        "in": "query",
+        "required": false,
+        "description": "Only this priority.",
+        "schema": {
+          "$ref": "#/components/schemas/Priority"
+        }
+      },
+      "AssigneeFilter": {
+        "name": "assignee",
+        "in": "query",
+        "required": false,
+        "description": "A user id, or none for unassigned.",
+        "schema": {
+          "type": "string",
+          "pattern": "^(none|[1-9][0-9]{0,9})$"
+        }
+      },
+      "Search": {
+        "name": "q",
+        "in": "query",
+        "required": false,
+        "description": "Case-insensitive text in the title, requester, team or SR number.",
+        "schema": {
+          "type": "string",
+          "maxLength": 100
+        }
+      }
+    },
+    "headers": {
+      "ETag": {
+        "description": "The revision as a quoted integer. Send it back in If-Match to change the request.",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^\"[1-9][0-9]*\"$"
+        }
+      },
+      "Location": {
+        "description": "Where the created request can be read.",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^/api/requests/[0-9]+$"
+        }
+      },
+      "RetryAfter": {
+        "description": "Seconds until another sign-in attempt is accepted.",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$"
+        }
+      },
+      "SetCookie": {
+        "description": "relay_session: 32 random bytes, HttpOnly, SameSite=Strict, Secure when COOKIE_SECURE=1; 8 h sliding, 24 h absolute.",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Malformed address, invalid JSON, or a value that fails validation (code bad_request or validation_failed).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Unauthenticated": {
+        "description": "No valid session (unauthenticated), or wrong credentials at login (invalid_credentials).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "The role may not do this (forbidden), or the CSRF token is missing or wrong (csrf_failed).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "No such request, or a requester asked for one they did not open.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "The status change is not allowed from the current status.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "PreconditionFailed": {
+        "description": "The If-Match revision is stale: someone else changed the request. Fetch it again.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "PayloadTooLarge": {
+        "description": "The body is larger than 8192 bytes.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "UnsupportedMediaType": {
+        "description": "Send Content-Type: application/json.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "PreconditionRequired": {
+        "description": "If-Match is missing.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "TooManyRequests": {
+        "description": "Five failed sign-ins for this username and address in 15 minutes.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "headers": {
+          "Retry-After": {
+            "$ref": "#/components/headers/RetryAfter"
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Unexpected failure. The message is generic; the details are in the server log under the X-Request-Id.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Unavailable": {
+        "description": "The database is not answering.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Role": {
+        "type": "string",
+        "enum": [
+          "requester",
+          "agent",
+          "admin"
+        ]
+      },
+      "Status": {
+        "type": "string",
+        "enum": [
+          "Open",
+          "Assigned",
+          "In progress",
+          "Completed"
+        ],
+        "description": "Allowed moves: Open to Assigned; Assigned to Open or In progress; In progress to Assigned or Completed; Completed to Open."
+      },
+      "Priority": {
+        "type": "string",
+        "enum": [
+          "Low",
+          "Normal",
+          "High",
+          "Urgent"
+        ]
+      },
+      "Team": {
+        "type": "string",
+        "enum": [
+          "Facilities",
+          "IT",
+          "People",
+          "Operations"
+        ]
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "bad_request",
+          "validation_failed",
+          "unauthenticated",
+          "invalid_credentials",
+          "forbidden",
+          "csrf_failed",
+          "not_found",
+          "method_not_allowed",
+          "conflict",
+          "precondition_failed",
+          "payload_too_large",
+          "unsupported_media_type",
+          "precondition_required",
+          "too_many_requests",
+          "internal_error",
+          "unavailable"
+        ],
+        "description": "Stable, machine-readable. The message is for people and may change."
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "$ref": "#/components/schemas/ErrorCode"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "additionalProperties": false
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "username": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "role"
+        ],
+        "additionalProperties": false
+      },
+      "UserListing": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "username": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "role",
+          "created_at"
+        ],
+        "additionalProperties": false
+      },
+      "Assignee": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "role"
+        ],
+        "additionalProperties": false
+      },
+      "Session": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/User"
+          },
+          "csrf_token": {
+            "type": "string",
+            "minLength": 43,
+            "maxLength": 43,
+            "description": "Send as X-CSRF-Token on every POST and PATCH."
+          }
+        },
+        "required": [
+          "user",
+          "csrf_token"
+        ],
+        "additionalProperties": false
+      },
+      "LoginRequest": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "additionalProperties": false
+      },
+      "NewRequest": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "team": {
+            "$ref": "#/components/schemas/Team"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "priority": {
+            "$ref": "#/components/schemas/Priority",
+            "default": "Normal"
+          }
+        },
+        "required": [
+          "title",
+          "team",
+          "description"
+        ],
+        "additionalProperties": false
+      },
+      "RequestChanges": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/Priority"
+          },
+          "assignee": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "A user id with role agent or admin, or null to unassign."
+          }
+        },
+        "required": [],
+        "additionalProperties": false,
+        "minProperties": 1
+      },
+      "NewComment": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "additionalProperties": false
+      },
+      "RequestSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "requester": {
+            "type": "string"
+          },
+          "requester_id": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "team": {
+            "$ref": "#/components/schemas/Team"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/Priority"
+          },
+          "assignee": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "assignee_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "requester",
+          "requester_id",
+          "team",
+          "status",
+          "priority",
+          "assignee",
+          "assignee_name",
+          "created_at",
+          "updated_at",
+          "revision"
+        ],
+        "additionalProperties": false
+      },
+      "HistoryEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "opened",
+              "status",
+              "assigned",
+              "priority",
+              "commented"
+            ]
+          },
+          "actor_id": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "actor_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "from": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "to": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "actor_id",
+          "actor_name",
+          "from",
+          "to",
+          "at"
+        ],
+        "additionalProperties": false
+      },
+      "Comment": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "author_id": {
+            "type": "integer"
+          },
+          "author_name": {
+            "type": "string"
+          },
+          "author_role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "body": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "author_id",
+          "author_name",
+          "author_role",
+          "body",
+          "created_at"
+        ],
+        "additionalProperties": false
+      },
+      "RequestDetail": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "requester": {
+            "type": "string"
+          },
+          "requester_id": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "team": {
+            "$ref": "#/components/schemas/Team"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/Priority"
+          },
+          "assignee": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "assignee_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "description": {
+            "type": "string"
+          },
+          "next": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Status"
+            }
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HistoryEntry"
+            }
+          },
+          "comments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Comment"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "requester",
+          "requester_id",
+          "team",
+          "status",
+          "priority",
+          "assignee",
+          "assignee_name",
+          "created_at",
+          "updated_at",
+          "revision",
+          "description",
+          "next",
+          "history",
+          "comments"
+        ],
+        "additionalProperties": false
+      },
+      "RequestPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RequestSummary"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "additionalProperties": false
+      },
+      "UserList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserListing"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "AssigneeList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Assignee"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "Alive": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "const": "ok"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "Ready": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "const": "ready"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "OpenApiDocument": {
+        "type": "object",
+        "required": [
+          "openapi",
+          "info",
+          "paths"
+        ],
+        "properties": {
+          "openapi": {
+            "type": "string"
+          },
+          "info": {
+            "type": "object"
+          },
+          "paths": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  }
+}

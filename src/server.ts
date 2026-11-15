@@ -83,6 +83,10 @@ export function createApp(options: AppOptions): App {
     try { db.prepare('SELECT 1').get(); } catch { throw unavailable('The database is not answering.'); }
     c.send(200, {status: 'ready'});
   });
+  pub('GET', '/openapi.json', async c => {
+    const content = await readFile(new URL('../openapi.json', import.meta.url));
+    c.res.writeHead(200, {'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache'}).end(content);
+  });
   pub('POST', '/api/login', async c => {
     const body = await c.body(), {username, password} = body;
     if (typeof username !== 'string' || !username.trim() || username.length > 64) throw invalid('Username is required.');
