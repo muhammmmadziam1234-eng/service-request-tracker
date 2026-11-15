@@ -1,0 +1,16 @@
+.git
+.github
+node_modules
+data
+coverage
+docs
+e2e
+test
+scripts
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+Dockerfile
+compose.yaml
+README.md
+tsconfig.json

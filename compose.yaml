@@ -1,0 +1,15 @@
+# docker compose up --build   then open http://127.0.0.1:4180
+services:
+  relay:
+    build: .
+    ports:
+      - "127.0.0.1:4180:4180"   # loopback only: the demo accounts share a published password
+    environment:
+      SEED_DEMO: "1"            # demo accounts and sample requests in an empty database; use 0 for anything real
+      COOKIE_SECURE: "0"        # set to 1 when the app is served over HTTPS
+    volumes:
+      - relay-data:/data
+    restart: unless-stopped
+
+volumes:
+  relay-data:
