@@ -70,6 +70,11 @@ test('an agent changes priority, assignee and status together, then comments', a
   const text = await record.innerText();
   for (const expected of [/Open → Assigned/, /Assigned to Morgan Brooks/, /Priority Normal → High/, /Riley Okafor/]) assert.match(text, expected);
   assert.match(await page.locator('button.row[data-id="1045"]').innerText(), /High priority · Morgan Brooks/);
+  // A second save straight afterwards must carry the new revision, or the server would answer 412 and nothing would change.
+  await record.getByLabel('Priority').selectOption('Urgent');
+  await record.getByRole('button', {name: 'Save changes'}).click();
+  await record.locator('.record-head .pill.priority-urgent').waitFor();
+  assert.match(await page.locator('button.row[data-id="1045"]').innerText(), /Urgent priority · Morgan Brooks/);
   await record.getByLabel('Add a comment').fill('Booked the large room on level 2.');
   await record.getByRole('button', {name: 'Post comment'}).click();
   await page.locator('#message', {hasText: 'Comment added'}).waitFor();
