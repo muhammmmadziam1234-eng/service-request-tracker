@@ -1,4 +1,5 @@
 import {DatabaseSync} from 'node:sqlite';
+import {migrate} from './migrate.mjs';
 export const statuses=['Open','Assigned','In progress','Completed'];
 export const teams=['Facilities','IT','People','Operations'];
 export const transitions={Open:['Assigned'],Assigned:['Open','In progress'],'In progress':['Assigned','Completed'],Completed:['Open']};
@@ -22,17 +23,7 @@ const seed=[
 export function openStore(path,{seedData=true}={}) {
   const db=new DatabaseSync(path);
   db.exec('PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=3000;');
-  db.exec(`CREATE TABLE IF NOT EXISTS requests(
-    id INTEGER PRIMARY KEY, title TEXT NOT NULL, requester TEXT NOT NULL, team TEXT NOT NULL,
-    description TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('Open','Assigned','In progress','Completed')),
-    created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-  CREATE TABLE IF NOT EXISTS activity(
-    id INTEGER PRIMARY KEY, request_id INTEGER NOT NULL REFERENCES requests(id),
-    event TEXT NOT NULL, previous_status TEXT, status TEXT NOT NULL, at TEXT NOT NULL);
-  CREATE INDEX IF NOT EXISTS activity_request ON activity(request_id,id);
-  CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY);`);
-  if(!db.prepare('PRAGMA table_info(requests)').all().some(column=>column.name==='revision'))
-    db.exec('ALTER TABLE requests ADD COLUMN revision INTEGER NOT NULL DEFAULT 1');
+  migrate(db);
   const insert=db.prepare('INSERT INTO requests(id,title,requester,team,description,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)');
   const log=db.prepare('INSERT INTO activity(request_id,event,previous_status,status,at) VALUES(?,?,?,?,?)');
   function tx(fn){
