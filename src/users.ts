@@ -24,3 +24,7 @@ export function listUsers(db: DatabaseSync): UserListing[] {
 export function listAssignees(db: DatabaseSync): {id: number; display_name: string; role: Role}[] {
   return db.prepare("SELECT id,display_name,role FROM users WHERE role IN ('agent','admin') ORDER BY display_name").all() as unknown as {id: number; display_name: string; role: Role}[];
 }
+
+export function setPasswordHash(db: DatabaseSync, id: number, passwordHash: string): void {
+  db.prepare('UPDATE users SET password_hash=? WHERE id=?').run(passwordHash, id);
+}

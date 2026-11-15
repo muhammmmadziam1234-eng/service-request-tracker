@@ -10,11 +10,11 @@ import {
   tooLarge, tooManyRequests, unauthenticated, unavailable, unsupportedMedia
 } from './errors.ts';
 import {logPath, type ErrorLog, type RequestLog} from './logger.ts';
-import {hashPassword, verifyPassword} from './passwords.ts';
+import {hashPassword, needsRehash, verifyPassword} from './passwords.ts';
 import type {Role} from './policy.ts';
 import {createStore} from './store.ts';
 import {createLoginThrottle, type LoginThrottle} from './throttle.ts';
-import {findByUsername, listAssignees, listUsers} from './users.ts';
+import {findByUsername, listAssignees, listUsers, setPasswordHash} from './users.ts';
 import {parseChanges, parseComment, parseListQuery, parseNewRequest} from './validate.ts';
 
 const MAX_BODY = 8192;
@@ -102,6 +102,7 @@ export function createApp(options: AppOptions): App {
     if (!account || !ok) { throttle.fail(key); throw invalidCredentials(); }
     throttle.reset(key);
     c.setUser(account.id);
+    if (needsRehash(account.password_hash)) setPasswordHash(db, account.id, await hashPassword(password));   // the cost was raised since this hash was made
     const {token, csrfToken, maxAge} = sessions.create(account.id);
     c.res.setHeader('Set-Cookie', sessionCookie(token, maxAge, secure));
     c.send(200, {user: {id: account.id, username: account.username, display_name: account.display_name, role: account.role}, csrf_token: csrfToken});

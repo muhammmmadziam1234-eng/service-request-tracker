@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {startApp, DEMO_PASSWORD} from './helpers.ts';
-import {verifyPassword} from '../src/passwords.ts';
+import {hashPassword, needsRehash, verifyPassword} from '../src/passwords.ts';
 
 const HOUR = 3_600_000;
 const cookieOf = (response: Response) => response.headers.getSetCookie().find(value => value.startsWith('relay_session='))!;
@@ -119,4 +119,15 @@ test('five failed logins block that username from that address for 15 minutes, e
   assert.equal((await app.client().login('riley')).status, 200, 'other users are unaffected');
   app.clock.t += 15 * 60_000;
   assert.equal((await app.client().login('casey')).status, 200);
+});
+test('a hash made with a lower cost is upgraded to the current cost at the next successful sign-in, and only then', async t => {
+  const app = await startApp(t), stored = () => (app.db.prepare("SELECT password_hash FROM users WHERE username='casey'").get() as {password_hash: string}).password_hash;
+  const cheap = await hashPassword(DEMO_PASSWORD, {N: 2048, r: 8, p: 1});
+  app.db.prepare("UPDATE users SET password_hash=? WHERE username='casey'").run(cheap);
+  assert.equal((await app.client().login('casey', 'wrong password')).status, 401);
+  assert.equal(stored(), cheap, 'a failed sign-in changes nothing');
+  assert.equal((await app.client().login('casey')).status, 200);
+  assert.notEqual(stored(), cheap);
+  assert.equal(needsRehash(stored()), false);
+  assert.equal((await app.client().login('casey')).status, 200, 'the new hash verifies');
 });
