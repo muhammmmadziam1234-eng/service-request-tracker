@@ -1,5 +1,7 @@
 # Service Request Tracker
 
+[![Tests](https://github.com/muhammmmadziam1234-eng/service-request-tracker/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/muhammmmadziam1234-eng/service-request-tracker/actions/workflows/test.yml)
+
 Relay Desk is a full-stack demo for logging an internal service request, moving it through a workflow, and reviewing its activity.
 
 ![Service Request Tracker screenshot](docs/preview.png)
