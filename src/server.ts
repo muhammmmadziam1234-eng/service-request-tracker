@@ -5,17 +5,16 @@ import type {DatabaseSync} from 'node:sqlite';
 import {
   clearedCookie, COOKIE_NAME, createSessions, csrfMatches, readCookie, sessionCookie, type ActiveSession
 } from './auth.ts';
-import {limits, statuses, type Status} from './domain.ts';
 import {
   badRequest, csrfFailed, forbidden, HttpError, invalid, invalidCredentials, methodNotAllowed, notFound,
-  tooLarge, tooManyRequests, unauthenticated, unsupportedMedia
+  tooLarge, tooManyRequests, unauthenticated, unavailable, unsupportedMedia
 } from './errors.ts';
 import {hashPassword, verifyPassword} from './passwords.ts';
 import type {Role} from './policy.ts';
 import {createStore} from './store.ts';
 import {createLoginThrottle, type LoginThrottle} from './throttle.ts';
 import {findByUsername, listAssignees, listUsers} from './users.ts';
-import {parseChanges, parseComment, parseNewRequest} from './validate.ts';
+import {parseChanges, parseComment, parseListQuery, parseNewRequest} from './validate.ts';
 
 const MAX_BODY = 8192;
 export interface AppOptions {
@@ -68,6 +67,12 @@ export function createApp(options: AppOptions): App {
     routes.push({method, path, regex: compile(path), access: 'user', handler, ...extra});
   const item = (c: Context, status: number, value: {revision: number}, headers: Record<string, string> = {}) => c.send(status, value, {ETag: '"' + value.revision + '"', ...headers});
 
+  // Probes: liveness never touches the database; readiness proves it can answer.
+  pub('GET', '/healthz', c => c.send(200, {status: 'ok'}));
+  pub('GET', '/readyz', c => {
+    try { db.prepare('SELECT 1').get(); } catch { throw unavailable('The database is not answering.'); }
+    c.send(200, {status: 'ready'});
+  });
   pub('POST', '/api/login', async c => {
     const body = await c.body(), {username, password} = body;
     if (typeof username !== 'string' || !username.trim() || username.length > 64) throw invalid('Username is required.');
@@ -90,12 +95,7 @@ export function createApp(options: AppOptions): App {
     c.send(204);
   });
   user('GET', '/api/session', (c, s) => c.send(200, {user: s.user, csrf_token: s.csrfToken}));
-  user('GET', '/api/requests', (c, s) => {
-    const status = c.url.searchParams.get('status') ?? '', q = c.url.searchParams.get('q') ?? '';
-    if (status && !(statuses as readonly string[]).includes(status)) throw invalid('Unknown status.');
-    if (q.length > limits.search) throw invalid('Search must be ' + limits.search + ' characters or fewer.');
-    c.send(200, store.list(s.user, {...(status ? {status: status as Status} : {}), q, sort: 'updated', order: 'desc', limit: limits.pageDefault, offset: 0}));
-  });
+  user('GET', '/api/requests', (c, s) => c.send(200, store.list(s.user, parseListQuery(c.url.searchParams))));
   user('POST', '/api/requests', async (c, s) => {
     const created = store.create(s.user, parseNewRequest(await c.body()));
     item(c, 201, created, {Location: '/api/requests/' + created.id});

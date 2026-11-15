@@ -61,7 +61,7 @@ export async function startApp(t: TestContext, options: Partial<AppOptions> = {}
   app.server.listen(0, '127.0.0.1');
   await once(app.server, 'listening');
   const port = (app.server.address() as AddressInfo).port, origin = 'http://127.0.0.1:' + port;
-  t.after(async () => { await app.close(); db.close(); });
+  t.after(async () => { await app.close(); try { db.close(); } catch { /* the test closed it on purpose */ } });
   return {
     origin, port, db, app, clock,
     client: () => new Client(origin),

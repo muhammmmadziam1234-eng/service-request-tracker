@@ -1,5 +1,6 @@
-import {limits, priorities, statuses, teams, type Priority, type Status, type Team} from './domain.ts';
+import {limits, priorities, sortKeys, sortOrders, statuses, teams, type Priority, type Status, type Team} from './domain.ts';
 import {invalid} from './errors.ts';
+import type {ListQuery} from './store.ts';
 
 export interface NewRequest {title: string; team: Team; description: string; priority: Priority}
 export interface Changes {status?: Status; priority?: Priority; assignee?: number | null}
@@ -43,4 +44,41 @@ export function parseChanges(body: Record<string, unknown>): Changes {
 export function parseComment(body: Record<string, unknown>): string {
   onlyKeys(body, ['body']);
   return text(body['body'], 'Comment', limits.comment, true);
+}
+
+const queryNames = ['limit', 'offset', 'sort', 'order', 'status', 'priority', 'assignee', 'q'];
+/** GET /api/requests parameters. Unknown or repeated parameters are errors; an empty value means "no filter". */
+export function parseListQuery(params: URLSearchParams): ListQuery {
+  for (const name of new Set(params.keys())) {
+    if (!queryNames.includes(name)) throw invalid('Unknown query parameter: ' + name.slice(0, 40) + '.');
+    if (params.getAll(name).length > 1) throw invalid('Send ' + name + ' only once.');
+  }
+  const get = (name: string): string | undefined => params.get(name) || undefined;
+  const whole = (name: string, min: number, max: number, fallback: number): number => {
+    const raw = get(name);
+    if (raw === undefined) return fallback;
+    if (!/^[0-9]{1,9}$/.test(raw) || Number(raw) < min || Number(raw) > max) throw invalid(name + ' must be a whole number from ' + min + ' to ' + max + '.');
+    return Number(raw);
+  };
+  const choice = <T extends string>(name: string, list: readonly T[]): T | undefined => {
+    const raw = get(name);
+    if (raw !== undefined && !oneOf(list, raw)) throw invalid(name + ' must be one of: ' + list.join(', ') + '.');
+    return raw as T | undefined;
+  };
+  const query: ListQuery = {
+    sort: choice('sort', sortKeys) ?? 'updated', order: choice('order', sortOrders) ?? 'desc',
+    limit: whole('limit', 1, limits.pageMax, limits.pageDefault), offset: whole('offset', 0, 100_000_000, 0)
+  };
+  const status = choice('status', statuses), priority = choice('priority', priorities), assignee = get('assignee'), q = get('q')?.trim();
+  if (status) query.status = status;
+  if (priority) query.priority = priority;
+  if (assignee !== undefined) {
+    if (assignee !== 'none' && !/^[1-9][0-9]{0,9}$/.test(assignee)) throw invalid('assignee must be a user id or none.');
+    query.assignee = assignee === 'none' ? 'none' : Number(assignee);
+  }
+  if (q) {
+    if (q.length > limits.search) throw invalid('Search must be ' + limits.search + ' characters or fewer.');
+    query.q = q;
+  }
+  return query;
 }
