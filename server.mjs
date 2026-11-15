@@ -29,7 +29,9 @@ async function body(req){
 export function app(store){
   return createServer(async (req,res)=>{
     try{
-      const url=new URL(req.url,'http://localhost'),path=url.pathname,method=req.method;
+      let url;
+      try{url=new URL(req.url,'http://localhost');}catch{throw new InputError('Malformed request address.');}
+      const path=url.pathname,method=req.method;
       if(path==='/api/requests'&&method==='GET'){
         json(res,200,store.list({status:url.searchParams.get('status')??'',q:url.searchParams.get('q')??''}));return;
       }
@@ -50,6 +52,8 @@ export function app(store){
         const content=await readFile(new URL('./public/'+name,import.meta.url));
         res.writeHead(200,{'Content-Type':type+'; charset=utf-8','X-Content-Type-Options':'nosniff'}).end(content);return;
       }
+      const allowed=path==='/api/requests'?'GET, POST':match?'GET, PATCH':asset?'GET':'';
+      if(allowed){json(res,405,{error:'Method not allowed.'},{Allow:allowed});return;}
       json(res,404,{error:'Not found.'});
     }catch(e){
       if(e instanceof InputError){json(res,e.status,{error:e.message});return;}

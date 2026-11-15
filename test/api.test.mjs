@@ -4,6 +4,7 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {once} from 'node:events';
+import net from 'node:net';
 import {app} from '../server.mjs';
 import {openStore} from '../store.mjs';
 
@@ -13,7 +14,17 @@ async function fixture(t,db=':memory:'){
   server.listen(0,'127.0.0.1');await once(server,'listening');
   const root='http://127.0.0.1:'+server.address().port;
   t.after(async()=>{await new Promise(r=>server.close(r));store.close();});
-  return (path,method='GET',value,revision)=>fetch(root+path,{method,...(value?{headers:{'Content-Type':'application/json',...(revision?{'If-Match':'"'+revision+'"'}:{})},body:JSON.stringify(value)}:{})});
+  const call=(path,method='GET',value,revision)=>fetch(root+path,{method,...(value?{headers:{'Content-Type':'application/json',...(revision?{'If-Match':'"'+revision+'"'}:{})},body:JSON.stringify(value)}:{})});
+  call.port=server.address().port;
+  return call;
+}
+function raw(port,request){
+  return new Promise((resolve,reject)=>{
+    let reply='';
+    const socket=net.connect(port,'127.0.0.1',()=>socket.write(request));
+    socket.setTimeout(3000,()=>socket.destroy(new Error('No reply to: '+request.split('\r\n')[0])));
+    socket.on('data',chunk=>{reply+=chunk;}).on('error',reject).on('close',()=>resolve(reply));
+  });
 }
 test('create, filter, and advance a request with durable activity',async t=>{
   const call=await fixture(t), created=await call('/api/requests','POST',payload);
@@ -59,4 +70,23 @@ test('saved requests and history survive reopening the database',async()=>{
     try{assert.equal(db.get(id).status,'Assigned');assert.equal(db.get(id).history.length,2);}
     finally{db.close();}
   }finally{await rm(dir,{recursive:true,force:true});}
+});
+test('a malformed address is a client error, and the server keeps answering',async t=>{
+  const call=await fixture(t);
+  const reply=await raw(call.port,'GET // HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n');
+  assert.match(reply,/^HTTP\/1\.1 400/);
+  assert.match(reply,/Malformed request address/);
+  assert.equal((await call('/api/requests')).status,200);
+});
+test('a method the route does not offer gets 405 with the methods it does',async t=>{
+  const call=await fixture(t);
+  const created=await (await call('/api/requests','POST',payload)).json();
+  for(const [path,method,allow] of [['/api/requests','PUT','GET, POST'],['/api/requests','DELETE','GET, POST'],
+    ['/api/requests/'+created.id,'DELETE','GET, PATCH'],['/','POST','GET'],['/app.mjs','PUT','GET']]){
+    const response=await call(path,method);
+    assert.equal(response.status,405,method+' '+path);
+    assert.equal(response.headers.get('allow'),allow,method+' '+path);
+  }
+  assert.equal((await call('/nothing-here')).status,404);
+  assert.equal((await call('/api/requests/abc')).status,404);
 });
