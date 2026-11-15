@@ -1,19 +1,13 @@
-import {mkdirSync} from 'node:fs';
-import {dirname} from 'node:path';
-import type {AddressInfo} from 'node:net';
-import {fileURLToPath} from 'node:url';
-import {openDatabase} from './db.ts';
-import {hashPassword} from './passwords.ts';
-import {DEMO_PASSWORD, seedDemo} from './seed.ts';
-import {usersExist} from './users.ts';
-import {createApp} from './server.ts';
+import {ConfigError, loadConfig, type Config} from './config.ts';
+import {start} from './run.ts';
 
-const path = process.env.REQUEST_DB || fileURLToPath(new URL('../data/requests.sqlite', import.meta.url));
-mkdirSync(dirname(path), {recursive: true});
-const db = openDatabase(path);
-if (!usersExist(db)) seedDemo(db, await hashPassword(DEMO_PASSWORD));
-const {server} = createApp({db, cookieSecure: process.env.COOKIE_SECURE === '1'});
-server.listen(Number(process.env.PORT || 4180), process.env.HOST || '127.0.0.1', () => {
-  const {address, port} = server.address() as AddressInfo;
-  console.log('Service Request Tracker: http://' + address + ':' + port);
-});
+let config: Config;
+try { config = loadConfig(process.env); } catch (error) {
+  if (error instanceof ConfigError) { process.stderr.write(error.message + '\n'); process.exit(1); }
+  throw error;
+}
+const running = await start(config);
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  // once: a second Ctrl-C while draining falls through to the default and ends the process at once
+  process.once(signal, () => { running.stop(signal).then(() => process.exit(0), error => { console.error(error); process.exit(1); }); });
+}

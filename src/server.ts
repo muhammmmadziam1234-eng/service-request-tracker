@@ -1,4 +1,4 @@
-import {randomBytes} from 'node:crypto';
+import {randomBytes, randomUUID} from 'node:crypto';
 import {createServer, type IncomingMessage, type Server, type ServerResponse} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import type {DatabaseSync} from 'node:sqlite';
@@ -9,6 +9,7 @@ import {
   badRequest, csrfFailed, forbidden, HttpError, invalid, invalidCredentials, methodNotAllowed, notFound,
   tooLarge, tooManyRequests, unauthenticated, unavailable, unsupportedMedia
 } from './errors.ts';
+import {logPath, type ErrorLog, type RequestLog} from './logger.ts';
 import {hashPassword, verifyPassword} from './passwords.ts';
 import type {Role} from './policy.ts';
 import {createStore} from './store.ts';
@@ -17,19 +18,28 @@ import {findByUsername, listAssignees, listUsers} from './users.ts';
 import {parseChanges, parseComment, parseListQuery, parseNewRequest} from './validate.ts';
 
 const MAX_BODY = 8192;
+const CSP = "default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+const REQUEST_ID = /^[A-Za-z0-9._-]{1,64}$/;
+const baseHeaders = (id: string): Record<string, string> => ({
+  'X-Request-Id': id, 'Content-Security-Policy': CSP, 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer'
+});
 export interface AppOptions {
   db: DatabaseSync;
   now?: () => number;
   cookieSecure?: boolean;
   throttle?: LoginThrottle;
   verify?: (password: string, stored: string) => Promise<boolean>;
+  /** Receives one entry per request (and one per unexpected error). Omit to log nothing. */
+  log?: (event: RequestLog | ErrorLog) => void;
 }
 export interface RouteInfo {method: string; path: string}
-export interface App {server: Server; routes: readonly RouteInfo[]; close(): Promise<void>}
+export interface App {server: Server; routes: readonly RouteInfo[]; close(graceMs?: number): Promise<void>}
 
 interface Context {
   req: IncomingMessage; res: ServerResponse; params: string[]; url: URL;
   body(): Promise<Record<string, unknown>>;
+  /** Attributes the request to a user in the log (login does this once the password is right). */
+  setUser(id: number): void;
   send(status: number, value?: unknown, headers?: Record<string, string>): void;
 }
 type Route = {method: string; path: string; regex: RegExp} & (
@@ -59,7 +69,7 @@ async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> 
 
 export function createApp(options: AppOptions): App {
   const {db} = options, now = options.now ?? Date.now, verify = options.verify ?? verifyPassword, secure = options.cookieSecure ?? false;
-  const throttle = options.throttle ?? createLoginThrottle({now}), sessions = createSessions(db, now), store = createStore(db);
+  const throttle = options.throttle ?? createLoginThrottle({now}), sessions = createSessions(db, now), store = createStore(db), log = options.log;
   const routes: Route[] = [];
   const compile = (path: string): RegExp => new RegExp('^' + path.replace('{id}', '([0-9]{1,10})') + '$');
   const pub = (method: string, path: string, handler: (c: Context) => void | Promise<void>) => routes.push({method, path, regex: compile(path), access: 'public', handler});
@@ -84,6 +94,7 @@ export function createApp(options: AppOptions): App {
     const ok = await verify(password, account?.password_hash ?? await getDummyHash());
     if (!account || !ok) { throttle.fail(key); throw invalidCredentials(); }
     throttle.reset(key);
+    c.setUser(account.id);
     const {token, csrfToken, maxAge} = sessions.create(account.id);
     c.res.setHeader('Set-Cookie', sessionCookie(token, maxAge, secure));
     c.send(200, {user: {id: account.id, username: account.username, display_name: account.display_name, role: account.role}, csrf_token: csrfToken});
@@ -112,7 +123,7 @@ export function createApp(options: AppOptions): App {
   for (const [path, file, type] of assets) {
     pub('GET', path, async c => {
       const content = await readFile(new URL('../public/' + file, import.meta.url));
-      c.res.writeHead(200, {'Content-Type': type + '; charset=utf-8', 'X-Content-Type-Options': 'nosniff'}).end(content);
+      c.res.writeHead(200, {'Content-Type': type + '; charset=utf-8', 'Cache-Control': 'no-cache'}).end(content);
     });
   }
 
@@ -123,9 +134,14 @@ export function createApp(options: AppOptions): App {
     return session;
   }
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const started = performance.now(), offered = req.headers['x-request-id'];
+    const id = typeof offered === 'string' && REQUEST_ID.test(offered) ? offered : randomUUID();
+    let userId: number | null = null;
+    for (const [name, value] of Object.entries(baseHeaders(id))) res.setHeader(name, value);
+    if (log) res.once('close', () => log({ts: new Date().toISOString(), id, method: req.method ?? '', path: logPath(req.url), status: res.statusCode, ms: Math.round((performance.now() - started) * 10) / 10, user: userId}));
     const send: Context['send'] = (status, value, headers = {}) => {
-      if (value === undefined) { res.writeHead(status, headers).end(); return; }
-      res.writeHead(status, {'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...headers}).end(JSON.stringify(value));
+      if (value === undefined) { res.writeHead(status, {'Cache-Control': 'no-store', ...headers}).end(); return; }
+      res.writeHead(status, {'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers}).end(JSON.stringify(value));
     };
     try {
       let url: URL;
@@ -136,22 +152,39 @@ export function createApp(options: AppOptions): App {
         if (matches.length) throw methodNotAllowed([...new Set(matches.map(m => m.method))].sort().join(', '));
         throw notFound();
       }
-      const context: Context = {req, res, url, params: route.regex.exec(url.pathname)!.slice(1), body: () => readJson(req), send};
+      const context: Context = {req, res, url, params: route.regex.exec(url.pathname)!.slice(1), body: () => readJson(req), send, setUser: user => { userId = user; }};
       if (route.access === 'public') { await route.handler(context); return; }
       const session = authenticate(req, res);
+      userId = session.user.id;
       if (method !== 'GET' && route.csrf !== false && !csrfMatches(session.csrfToken, req.headers['x-csrf-token'])) throw csrfFailed();
       if (route.roles && !route.roles.includes(session.user.role)) throw forbidden();
       await route.handler(context, session);
     } catch (error) {
       if (error instanceof HttpError) { send(error.status, {error: {code: error.code, message: error.message}}, error.headers); return; }
-      console.error(error);
+      log?.({ts: new Date().toISOString(), level: 'error', id, message: error instanceof Error ? error.message : String(error)});
       send(500, {error: {code: 'internal_error', message: 'The request could not be completed.'}});
     }
   }
   const server = createServer((req, res) => { void handle(req, res); });
+  // Slow-header and slow-body clients are cut off instead of holding a socket open.
+  server.headersTimeout = 10_000;
+  server.requestTimeout = 15_000;
+  // A request Node cannot even parse never reaches handle(); answer it in the same shape, with the same headers.
+  server.on('clientError', (error: NodeJS.ErrnoException, socket) => {
+    if (error.code === 'ECONNRESET' || !socket.writable) return;
+    const id = randomUUID(), body = JSON.stringify({error: {code: 'bad_request', message: 'The request could not be parsed.'}});
+    const headers = {...baseHeaders(id), 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': String(Buffer.byteLength(body)), Connection: 'close'};
+    socket.end('HTTP/1.1 400 Bad Request\r\n' + Object.entries(headers).map(([name, value]) => name + ': ' + value).join('\r\n') + '\r\n\r\n' + body);
+    log?.({ts: new Date().toISOString(), id, method: '-', path: '(unparsed)', status: 400, ms: 0, user: null});
+  });
   return {
     server,
     routes: routes.map(({method, path}) => ({method, path})),
-    close: () => new Promise<void>(resolve => { server.close(() => resolve()); server.closeIdleConnections(); })
+    close: (graceMs = 5000) => new Promise<void>(resolve => {
+      const force = setTimeout(() => server.closeAllConnections(), graceMs);
+      force.unref();
+      server.close(() => { clearTimeout(force); resolve(); });
+      server.closeIdleConnections();
+    })
   };
 }
