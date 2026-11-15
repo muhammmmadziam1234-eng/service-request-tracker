@@ -34,7 +34,7 @@ try {
     'passwords.test.ts': 'unit', 'throttle.test.ts': 'unit', 'config.test.ts': 'unit', 'static.test.ts': 'unit', 'migrate.test.ts': 'unit (database)',
     'auth.test.ts': 'integration (HTTP)', 'api.test.ts': 'integration (HTTP)', 'roles.test.ts': 'integration (HTTP)', 'domain.test.ts': 'integration (HTTP)',
     'list.test.ts': 'integration (HTTP)', 'ops.test.ts': 'integration (HTTP)', 'headers.test.ts': 'integration (HTTP)', 'logging.test.ts': 'integration (HTTP)',
-    'shutdown.test.ts': 'integration (process)', 'contract.test.ts': 'contract (OpenAPI)'
+    'shutdown.test.ts': 'integration (process)', 'accounts.test.ts': 'integration (process)', 'contract.test.ts': 'contract (OpenAPI)'
   };
   const inventory = readdirSync(join(root, 'test')).filter(name => name.endsWith('.test.ts')).sort().map(name => {
     const alone = spawnSync(process.execPath, ['--test', join('test', name)], {cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024});

@@ -11,7 +11,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --test \"test/**/*.test.ts\"",
     "test:e2e": "node --test --test-concurrency=1 \"e2e/**/*.test.ts\"",
-    "coverage": "node scripts/coverage-gate.ts"
+    "coverage": "node scripts/coverage-gate.ts",
+    "user:create": "node scripts/create-user.ts"
   },
   "devDependencies": {
     "@types/node": "24.19.2",
