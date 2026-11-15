@@ -15,3 +15,12 @@ export function createUser(db: DatabaseSync, input: {username: string; display_n
     .run(input.username, input.display_name, input.role, input.passwordHash, now.toISOString());
   return Number(result.lastInsertRowid);
 }
+
+export interface UserListing extends PublicUser {created_at: string}
+export function listUsers(db: DatabaseSync): UserListing[] {
+  return db.prepare('SELECT id,username,display_name,role,created_at FROM users ORDER BY id').all() as unknown as UserListing[];
+}
+/** Who a request can be assigned to: agents and admins, by name. */
+export function listAssignees(db: DatabaseSync): {id: number; display_name: string; role: Role}[] {
+  return db.prepare("SELECT id,display_name,role FROM users WHERE role IN ('agent','admin') ORDER BY display_name").all() as unknown as {id: number; display_name: string; role: Role}[];
+}

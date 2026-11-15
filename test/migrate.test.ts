@@ -65,6 +65,16 @@ test('a version-1 database upgrades in place and keeps every row, revision and h
   }
   assert.equal(plain(db.prepare('SELECT * FROM activity WHERE request_id=? ORDER BY id').all(id)).length, 3);
 
+  // Everything the later migrations add is defaulted, never invented.
+  const requests = plain(db.prepare('SELECT id,priority,assignee_id,requester_id FROM requests').all());
+  assert.equal(requests.length, 6);
+  for (const row of requests) assert.deepEqual([row['priority'], row['assignee_id'], row['requester_id']], ['Normal', null, null], 'request ' + row['id']);
+  for (const row of plain(db.prepare('SELECT * FROM activity').all())) {
+    assert.equal(row['kind'], row['previous_status'] === null ? 'opened' : 'status');
+    assert.deepEqual([row['actor_id'], row['from_value'], row['to_value']], [null, row['previous_status'], row['status']]);
+  }
+  for (const table of ['users', 'sessions', 'comments']) assert.equal((db.prepare(`SELECT count(*) AS n FROM ${table}`).get() as {n: number}).n, 0, table);
+
   const snapshot = dump(db);
   const second = migrate(db);
   assert.deepEqual(second.applied, []);

@@ -6,7 +6,7 @@ import {verifyPassword} from '../src/passwords.ts';
 
 const HOUR = 3_600_000;
 const cookieOf = (response: Response) => response.headers.getSetCookie().find(value => value.startsWith('relay_session='))!;
-const payload = {title: 'Replace meeting room projector', requester: 'Casey Lee', team: 'IT', description: 'The HDMI port is not working.'};
+const payload = {title: 'Replace meeting room projector', team: 'IT', description: 'The HDMI port is not working.'};
 
 test('login sets an HttpOnly, SameSite=Strict session cookie and stores only the hash of the token', async t => {
   const app = await startApp(t), client = app.client();

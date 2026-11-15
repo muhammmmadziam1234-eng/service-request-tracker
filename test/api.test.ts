@@ -6,9 +6,10 @@ import {join} from 'node:path';
 import net from 'node:net';
 import {openDatabase} from '../src/db.ts';
 import {createStore} from '../src/store.ts';
+import {createUser} from '../src/users.ts';
 import {startApp} from './helpers.ts';
 
-const payload = {title: 'Replace meeting room projector', requester: 'Casey Lee', team: 'IT', description: 'The HDMI port is not working.'};
+const payload = {title: 'Replace meeting room projector', team: 'IT' as const, description: 'The HDMI port is not working.'};
 function raw(port: number, request: string): Promise<string> {
   return new Promise((resolve, reject) => {
     let reply = '';
@@ -25,10 +26,10 @@ test('create, filter, and advance a request with durable activity', async t => {
   const item = await created.json(), path = '/api/requests/' + item.id;
   assert.equal(item.history.length, 1);
   assert.equal((await riley.send(path, {method: 'PATCH', body: {status: 'Assigned'}, revision: 1})).status, 200);
-  const matching = (await riley.call('/api/requests?status=Assigned&q=projector')).body;
+  const matching = (await riley.call('/api/requests?status=Assigned&q=projector')).body.items;
   assert.deepEqual(matching.map((x: {id: number}) => x.id), [item.id]);
   const current = (await riley.call(path)).body;
-  assert.deepEqual(current.history.map((x: {status: string}) => x.status), ['Open', 'Assigned']);
+  assert.deepEqual(current.history.map((x: {to: string}) => x.to), ['Open', 'Assigned']);
 });
 test('invalid input and forbidden transitions do not write activity', async t => {
   const app = await startApp(t), riley = await app.login('riley');
@@ -49,17 +50,18 @@ test('a stale write cannot overwrite another tab or append phantom history', asy
   assert.deepEqual([a.status, b.status].sort(), [200, 412]);
   const get = await riley.send(path);
   assert.equal(get.headers.get('etag'), '"2"');
-  assert.deepEqual((await get.json()).history.map((x: {status: string}) => x.status), ['Open', 'Assigned']);
+  assert.deepEqual((await get.json()).history.map((x: {to: string}) => x.to), ['Open', 'Assigned']);
 });
 test('saved requests and history survive reopening the database', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'relay-test-')), path = join(dir, 'requests.sqlite');
   try {
     let db = openDatabase(path), store = createStore(db);
-    const {id} = store.add(payload);
-    store.update(id, 'Assigned', 1);
+    const agent = {id: createUser(db, {username: 'riley', display_name: 'Riley Okafor', role: 'agent', passwordHash: 'x'}), username: 'riley', display_name: 'Riley Okafor', role: 'agent' as const};
+    const {id} = store.create(agent, {...payload, priority: 'Normal'});
+    store.update(agent, id, {status: 'Assigned'}, 1);
     db.close();
     db = openDatabase(path); store = createStore(db);
-    try { assert.equal(store.get(id).status, 'Assigned'); assert.equal(store.get(id).history.length, 2); } finally { db.close(); }
+    try { assert.equal(store.get(agent, id).status, 'Assigned'); assert.equal(store.get(agent, id).history.length, 2); } finally { db.close(); }
   } finally { await rm(dir, {recursive: true, force: true}); }
 });
 test('a malformed address is a client error, and the server keeps answering', async t => {

@@ -11,6 +11,7 @@ export function openDatabase(path: string): DatabaseSync {
 
 /** Runs fn inside one IMMEDIATE transaction: all of its writes commit together or not at all. */
 export function transaction<T>(db: DatabaseSync, fn: () => T): T {
+  if (db.isTransaction) return fn(); // already inside one (the seed groups several store calls): join it
   db.exec('BEGIN IMMEDIATE');
   try {
     const result = fn();

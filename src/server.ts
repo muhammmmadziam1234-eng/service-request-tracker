@@ -5,15 +5,17 @@ import type {DatabaseSync} from 'node:sqlite';
 import {
   clearedCookie, COOKIE_NAME, createSessions, csrfMatches, readCookie, sessionCookie, type ActiveSession
 } from './auth.ts';
+import {limits, statuses, type Status} from './domain.ts';
 import {
   badRequest, csrfFailed, forbidden, HttpError, invalid, invalidCredentials, methodNotAllowed, notFound,
-  preconditionRequired, tooLarge, tooManyRequests, unauthenticated, unsupportedMedia
+  tooLarge, tooManyRequests, unauthenticated, unsupportedMedia
 } from './errors.ts';
 import {hashPassword, verifyPassword} from './passwords.ts';
 import type {Role} from './policy.ts';
 import {createStore} from './store.ts';
 import {createLoginThrottle, type LoginThrottle} from './throttle.ts';
-import {findByUsername} from './users.ts';
+import {findByUsername, listAssignees, listUsers} from './users.ts';
+import {parseChanges, parseComment, parseNewRequest} from './validate.ts';
 
 const MAX_BODY = 8192;
 export interface AppOptions {
@@ -64,7 +66,7 @@ export function createApp(options: AppOptions): App {
   const pub = (method: string, path: string, handler: (c: Context) => void | Promise<void>) => routes.push({method, path, regex: compile(path), access: 'public', handler});
   const user = (method: string, path: string, handler: (c: Context, s: ActiveSession) => void | Promise<void>, extra: {roles?: readonly Role[]; csrf?: boolean} = {}) =>
     routes.push({method, path, regex: compile(path), access: 'user', handler, ...extra});
-  const item = (c: Context, status: number, value: {revision: number}) => c.send(status, value, {ETag: '"' + value.revision + '"'});
+  const item = (c: Context, status: number, value: {revision: number}, headers: Record<string, string> = {}) => c.send(status, value, {ETag: '"' + value.revision + '"', ...headers});
 
   pub('POST', '/api/login', async c => {
     const body = await c.body(), {username, password} = body;
@@ -88,14 +90,25 @@ export function createApp(options: AppOptions): App {
     c.send(204);
   });
   user('GET', '/api/session', (c, s) => c.send(200, {user: s.user, csrf_token: s.csrfToken}));
-  user('GET', '/api/requests', c => c.send(200, store.list({status: c.url.searchParams.get('status') ?? '', q: c.url.searchParams.get('q') ?? ''})));
-  user('POST', '/api/requests', async c => item(c, 201, store.add(await c.body())));
-  user('GET', '/api/requests/{id}', c => item(c, 200, store.get(Number(c.params[0]))));
-  user('PATCH', '/api/requests/{id}', async c => {
-    const version = /^"([1-9][0-9]*)"$/.exec(c.req.headers['if-match'] ?? '');
-    if (!version) throw preconditionRequired('A current request revision is required in If-Match.');
-    item(c, 200, store.update(Number(c.params[0]), (await c.body()).status, Number(version[1])));
+  user('GET', '/api/requests', (c, s) => {
+    const status = c.url.searchParams.get('status') ?? '', q = c.url.searchParams.get('q') ?? '';
+    if (status && !(statuses as readonly string[]).includes(status)) throw invalid('Unknown status.');
+    if (q.length > limits.search) throw invalid('Search must be ' + limits.search + ' characters or fewer.');
+    c.send(200, store.list(s.user, {...(status ? {status: status as Status} : {}), q, sort: 'updated', order: 'desc', limit: limits.pageDefault, offset: 0}));
   });
+  user('POST', '/api/requests', async (c, s) => {
+    const created = store.create(s.user, parseNewRequest(await c.body()));
+    item(c, 201, created, {Location: '/api/requests/' + created.id});
+  });
+  user('GET', '/api/requests/{id}', (c, s) => item(c, 200, store.get(s.user, Number(c.params[0]))));
+  user('PATCH', '/api/requests/{id}', async (c, s) => {
+    const header = /^"([1-9][0-9]*)"$/.exec(String(c.req.headers['if-match'] ?? '')), revision = header ? Number(header[1]) : null;
+    const changes = parseChanges(await c.body());
+    item(c, 200, store.update(s.user, Number(c.params[0]), changes, revision !== null && Number.isSafeInteger(revision) ? revision : null));
+  });
+  user('POST', '/api/requests/{id}/comments', async (c, s) => c.send(201, store.addComment(s.user, Number(c.params[0]), parseComment(await c.body()))));
+  user('GET', '/api/users', c => c.send(200, {items: listUsers(db)}), {roles: ['admin']});
+  user('GET', '/api/assignees', c => c.send(200, {items: listAssignees(db)}), {roles: ['agent', 'admin']});
   for (const [path, file, type] of assets) {
     pub('GET', path, async c => {
       const content = await readFile(new URL('../public/' + file, import.meta.url));
