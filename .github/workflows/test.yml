@@ -5,11 +5,50 @@ on:
 permissions:
   contents: read
 jobs:
-  test:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-      - run: npm test
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      # Unit, HTTP integration and contract tests, then the 85% line-coverage gate for src/.
+      - run: npm run coverage
+      - run: npm audit --omit=dev --audit-level=high
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      # The browser is the one already installed on the runner; nothing is downloaded.
+      CHROME_PATH: /usr/bin/google-chrome
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test:e2e
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -t relay-desk:ci .
+      - run: docker run -d --name relay -p 4180:4180 relay-desk:ci
+      - name: Wait for /healthz to answer 200
+        run: |
+          for attempt in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4180/healthz || true)
+            if [ "$code" = "200" ]; then echo "healthz answered 200 after $attempt attempt(s)"; exit 0; fi
+            sleep 1
+          done
+          echo "healthz never answered 200"; docker logs relay; exit 1
+      - name: The app itself is up, not just the probe
+        run: |
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4180/readyz)" = "200"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4180/api/requests)" = "401"
+      - name: Stop the container
+        if: always()
+        run: docker rm -f relay
