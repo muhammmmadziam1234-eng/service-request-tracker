@@ -1,0 +1,16 @@
+$ CHROME_PATH=<chromium> npm run test:e2e   (browser tests: playwright-core + axe-core; durations removed so the file is stable)
+✔ signing in: a wrong password gets one generic message, the right one opens the queue
+✔ a requester sees only their own requests, can open a new one, and has no agent controls
+✔ an agent changes priority, assignee and status together, then comments
+✔ two browsers editing the same request: the second gets the conflict message and the fresh state
+✔ signing out ends the session on the server, not just in the page
+✔ a write without the CSRF token is refused even with a valid session cookie
+✔ repeated wrong passwords are throttled and the message says how long to wait
+✔ empty and error states are shown, and the error state can be retried
+✔ pagination moves through the queue and shows where you are
+✔ everything can be done with the keyboard alone, and focus is always visible
+✔ axe-core finds no violations on the sign-in page, the queue with details (agent and requester) or the create dialog
+✔ at 360 px wide nothing scrolls sideways and axe still finds nothing
+ℹ tests 12
+ℹ pass 12
+ℹ fail 0

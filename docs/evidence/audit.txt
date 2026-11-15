@@ -1,0 +1,2 @@
+$ npm audit --omit=dev   (the server has no runtime dependencies; devDependencies are pinned and not shipped)
+found 0 vulnerabilities

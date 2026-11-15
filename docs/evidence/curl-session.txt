@@ -1,0 +1,22 @@
+# Real output of the commands in the README, against a fresh demo database (port 4201, server stopped afterwards).
+# The csrf_token value is replaced by <csrf-token>; it only ever existed in that throwaway session.
+
+$ curl -s -c jar.txt -H "Content-Type: application/json" -d '{"username":"riley","password":"relay-demo-2026"}' http://127.0.0.1:4180/api/login
+{"user":{"id":2,"username":"riley","display_name":"Riley Okafor","role":"agent"},"csrf_token":"<csrf-token>"}
+
+$ curl -s -b jar.txt "http://127.0.0.1:4180/api/requests?status=Open&sort=priority&limit=2"
+{"total": 3, "limit": 2, "offset": 0, "items": [{"id": 1045, "title": "Book a room for the Friday planning session", "priority": "Normal", "status": "Open", "assignee_name": null, "revision": 1}, {"id": 1044, "title": "Update new starter checklist", "priority": "Normal", "status": "Open", "assignee_name": null, "revision": 1}]}
+
+$ curl -si -b jar.txt -X PATCH http://127.0.0.1:4180/api/requests/1045 -H "Content-Type: application/json" -H "X-CSRF-Token: $CSRF" -H 'If-Match: "1"' -d '{"priority":"High","assignee":2}'
+HTTP/1.1 200 OK
+ETag: "2"
+{"id": 1045, "priority": "High", "assignee_name": "Riley Okafor", "revision": 2} [["opened", null, "Open"], ["assigned", null, "Riley Okafor"], ["priority", "Normal", "High"]]
+
+# the same call without the X-CSRF-Token header
+{"error":{"code":"csrf_failed","message":"The CSRF token is missing or wrong. Reload the page and try again."}}  -> HTTP 403
+
+# the same call with the old revision (If-Match "1") after the change above
+{"error":{"code":"precondition_failed","message":"Someone updated this request. Review the latest version before trying again."}}  -> HTTP 412
+
+# a requester asking for a request that is not theirs
+{"error":{"code":"not_found","message":"Request not found."}}  -> HTTP 404

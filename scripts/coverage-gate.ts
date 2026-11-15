@@ -23,9 +23,21 @@ try {
   const files = readFileSync(lcovPath, 'utf8').split('end_of_record').map(block => {
     const field = (key: string): number => Number(new RegExp('^' + key + ':(\\d+)$', 'm').exec(block)?.[1] ?? 0);
     const source = /^SF:(.+)$/m.exec(block)?.[1];
-    return source ? {file: relative(root, resolve(root, source)), lf: field('LF'), lh: field('LH'), brf: field('BRF'), brh: field('BRH'), fnf: field('FNF'), fnh: field('FNH')} : null;
+    if (!source) return null;
+    // Node's reporter counts every source line, blank and comment-only ones included, which flatters the figure.
+    // So the gate counts only lines that hold code: DA records on blank lines and comment-only lines are dropped.
+    let inComment = false;
+    const holdsCode = readFileSync(resolve(root, source), 'utf8').split('\n').map(line => {
+      const text = line.trim();
+      if (inComment) { if (text.includes('*/')) { inComment = false; return text.slice(text.indexOf('*/') + 2).trim() !== ''; } return false; }
+      if (text.startsWith('/*')) { if (!text.includes('*/')) { inComment = true; return false; } return text.slice(text.indexOf('*/') + 2).trim() !== ''; }
+      return text !== '' && !text.startsWith('//');
+    });
+    let lf = 0, lh = 0;
+    for (const record of block.matchAll(/^DA:(\d+),(\d+)/gm)) if (holdsCode[Number(record[1]) - 1]) { lf++; if (Number(record[2]) > 0) lh++; }
+    return {file: relative(root, resolve(root, source)), lf, lh, allLines: field('LF'), allHit: field('LH'), brf: field('BRF'), brh: field('BRH'), fnf: field('FNF'), fnh: field('FNH')};
   }).filter((entry): entry is NonNullable<typeof entry> => entry !== null).sort((a, b) => a.file.localeCompare(b.file));
-  const sum = (key: 'lf' | 'lh' | 'brf' | 'brh' | 'fnf' | 'fnh'): number => files.reduce((total, entry) => total + entry[key], 0);
+  const sum = (key: 'lf' | 'lh' | 'allLines' | 'allHit' | 'brf' | 'brh' | 'fnf' | 'fnh'): number => files.reduce((total, entry) => total + entry[key], 0);
   const rows = files.map(e => `${e.file.padEnd(20)} ${pct(e.lh, e.lf).padStart(7)} (${e.lh}/${e.lf})`.padEnd(48) + `${pct(e.brh, e.brf).padStart(7)} (${e.brh}/${e.brf})`.padEnd(18) + `${pct(e.fnh, e.fnf).padStart(7)} (${e.fnh}/${e.fnf})`);
   const total = `${'TOTAL'.padEnd(20)} ${pct(sum('lh'), sum('lf')).padStart(7)} (${sum('lh')}/${sum('lf')})`.padEnd(48) + `${pct(sum('brh'), sum('brf')).padStart(7)} (${sum('brh')}/${sum('brf')})`.padEnd(18) + `${pct(sum('fnh'), sum('fnf')).padStart(7)} (${sum('fnh')}/${sum('fnf')})`;
   const linePercent = 100 * sum('lh') / sum('lf');
@@ -46,14 +58,16 @@ try {
   const report = [
     'Coverage of src/ by the unit, HTTP integration and contract tests (npm test).',
     'Measured with node --test --experimental-test-coverage (V8 coverage), Node ' + process.version + '.',
-    `Gate: at least ${GATE}% of lines (scripts/coverage-gate.ts). The browser tests (npm run test:e2e) are not counted here.`,
+    `Gate: at least ${GATE}% of lines that hold code (scripts/coverage-gate.ts). The browser tests (npm run test:e2e) are not counted here.`,
+    'Blank lines and comment-only lines are left out of "lines"; Node\'s own reporter counts them as covered lines, so its raw figure is higher (shown below the table).',
     'Reproduce and refresh this file: npm run coverage -- --write',
     '',
     `Tests: ${tests} run, ${passed} passed, ${failed} failed. A "test" here counts every subtest, e.g. each role x action cell.`,
     '',
     'file                 lines                          branches        functions',
     ...rows, total, '',
-    `Line coverage ${linePercent.toFixed(1)}% against a gate of ${GATE}%: ${linePercent >= GATE ? 'PASS' : 'FAIL'}`,
+    `Line coverage ${linePercent.toFixed(1)}% of code lines against a gate of ${GATE}%: ${linePercent >= GATE ? 'PASS' : 'FAIL'}`,
+    `For reference, Node's raw figure counting every source line: ${pct(sum('allHit'), sum('allLines'))} (${sum('allHit')}/${sum('allLines')}).`,
     '',
     'Tests per file (each file run on its own):',
     ...inventory.map(e => `  ${e.name.padEnd(20)} ${String(e.tests).padStart(4)}  ${e.kind}`),
