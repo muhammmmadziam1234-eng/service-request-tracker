@@ -46,7 +46,10 @@ type Route = {method: string; path: string; regex: RegExp} & (
   | {access: 'public'; handler: (c: Context) => void | Promise<void>}
   | {access: 'user'; roles?: readonly Role[]; csrf?: boolean; handler: (c: Context, s: ActiveSession) => void | Promise<void>});
 
-const assets: [path: string, file: string, type: string][] = [['/', 'index.html', 'text/html'], ['/app.mjs', 'app.mjs', 'text/javascript'], ['/style.css', 'style.css', 'text/css']];
+const assets: [path: string, file: string, type: string][] = [
+  ['/', 'index.html', 'text/html'], ['/app.js', 'app.js', 'text/javascript'], ['/api.js', 'api.js', 'text/javascript'],
+  ['/style.css', 'style.css', 'text/css'], ['/favicon.svg', 'favicon.svg', 'image/svg+xml']
+];
 // One dummy hash per process: unknown usernames are verified against it so they cost the same time as real ones.
 let dummyHash: Promise<string> | undefined;
 const getDummyHash = (): Promise<string> => (dummyHash ??= hashPassword(randomBytes(16).toString('hex')));

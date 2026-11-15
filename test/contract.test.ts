@@ -67,7 +67,9 @@ const scenarios: Record<string, (app: TestApp, check: Check) => Promise<void>> =
   async readyz(app, check) { await check(app.client().send('/readyz'), 200); app.db.close(); await check(app.client().send('/readyz'), 503, 'database down'); },
   async openapi(app, check) { const response = await check(app.client().send('/openapi.json'), 200); assert.deepEqual(await response.clone().json().catch(() => doc), doc, 'the served document is the file'); },
   async getIndex(app, check) { await check(app.client().send('/'), 200); },
-  async getAppScript(app, check) { await check(app.client().send('/app.mjs'), 200); },
+  async getAppScript(app, check) { await check(app.client().send('/app.js'), 200); },
+  async getApiScript(app, check) { await check(app.client().send('/api.js'), 200); },
+  async getFavicon(app, check) { await check(app.client().send('/favicon.svg'), 200); },
   async getStyles(app, check) { await check(app.client().send('/style.css'), 200); },
   async login(app, check) {
     const anon = app.client();

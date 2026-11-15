@@ -133,19 +133,69 @@
         }
       }
     },
-    "/app.mjs": {
+    "/app.js": {
       "get": {
         "operationId": "getAppScript",
         "tags": [
           "static"
         ],
-        "summary": "Browser script",
+        "summary": "Browser script: the interface",
         "security": [],
         "responses": {
           "200": {
             "description": "The file.",
             "content": {
               "text/javascript": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api.js": {
+      "get": {
+        "operationId": "getApiScript",
+        "tags": [
+          "static"
+        ],
+        "summary": "Browser script: the API client",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The file.",
+            "content": {
+              "text/javascript": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/favicon.svg": {
+      "get": {
+        "operationId": "getFavicon",
+        "tags": [
+          "static"
+        ],
+        "summary": "Icon",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The file.",
+            "content": {
+              "image/svg+xml": {
                 "schema": {
                   "type": "string"
                 }

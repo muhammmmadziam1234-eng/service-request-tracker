@@ -75,7 +75,7 @@ test('a method the route does not offer gets 405 with the methods it does', asyn
   const app = await startApp(t), riley = await app.login('riley');
   const created = (await riley.call('/api/requests', {method: 'POST', body: payload})).body;
   for (const [path, method, allow] of [['/api/requests', 'PUT', 'GET, POST'], ['/api/requests', 'DELETE', 'GET, POST'],
-    ['/api/requests/' + created.id, 'DELETE', 'GET, PATCH'], ['/', 'POST', 'GET'], ['/app.mjs', 'PUT', 'GET']] as [string, string, string][]) {
+    ['/api/requests/' + created.id, 'DELETE', 'GET, PATCH'], ['/', 'POST', 'GET'], ['/app.js', 'PUT', 'GET']] as [string, string, string][]) {
     const response = await riley.send(path, {method});
     assert.equal(response.status, 405, method + ' ' + path);
     assert.equal(response.headers.get('allow'), allow, method + ' ' + path);

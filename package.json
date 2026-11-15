@@ -9,12 +9,15 @@
   "scripts": {
     "start": "node src/main.ts",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "node --test \"test/**/*.test.ts\""
+    "test": "node --test \"test/**/*.test.ts\"",
+    "test:e2e": "node --test --test-concurrency=1 \"e2e/**/*.test.ts\""
   },
   "devDependencies": {
     "@types/node": "24.19.2",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
+    "axe-core": "4.14.0",
+    "playwright-core": "1.65.1",
     "typescript": "7.0.2"
   }
 }
