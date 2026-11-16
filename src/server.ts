@@ -95,11 +95,11 @@ export function createApp(options: AppOptions): App {
     if (typeof username !== 'string' || !username.trim() || username.length > 64) throw invalid('Username is required.');
     if (typeof password !== 'string' || !password || password.length > 200) throw invalid('Password is required.');
     const key = username.trim().toLowerCase() + '|' + (c.req.socket.remoteAddress ?? 'unknown');
-    const decision = throttle.check(key);
+    const decision = throttle.begin(key);   // counted now, before the slow password check, so parallel attempts cannot all slip through
     if (!decision.allowed) throw tooManyRequests(decision.retryAfterSeconds);
     const account = findByUsername(db, username.trim());
     const ok = await verify(password, account?.password_hash ?? await getDummyHash());
-    if (!account || !ok) { throttle.fail(key); throw invalidCredentials(); }
+    if (!account || !ok) throw invalidCredentials();
     throttle.reset(key);
     c.setUser(account.id);
     if (needsRehash(account.password_hash)) setPasswordHash(db, account.id, await hashPassword(password));   // the cost was raised since this hash was made

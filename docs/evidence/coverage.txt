@@ -4,7 +4,7 @@ Gate: at least 85% of lines that hold code (scripts/coverage-gate.ts). The brows
 Blank lines and comment-only lines are left out of "lines"; Node's own reporter counts them as covered lines, so its raw figure is higher (shown below the table).
 Reproduce and refresh this file: npm run coverage -- --write
 
-Tests: 154 run, 154 passed, 0 failed. A "test" here counts every subtest, e.g. each role x action cell.
+Tests: 156 run, 156 passed, 0 failed. A "test" here counts every subtest, e.g. each role x action cell.
 
 file                 lines                          branches        functions
 src/accounts.ts       100.0% (15/15)             100.0% (12/12)    100.0% (1/1)
@@ -22,18 +22,18 @@ src/run.ts             93.2% (41/44)              70.0% (7/10)      85.7% (6/7)
 src/seed.ts           100.0% (68/68)              90.0% (18/20)    100.0% (9/9)
 src/server.ts         100.0% (185/185)            91.6% (120/131)   97.4% (38/39)
 src/store.ts          100.0% (119/119)           100.0% (78/78)    100.0% (13/13)
-src/throttle.ts       100.0% (33/33)             100.0% (16/16)    100.0% (7/7)
+src/throttle.ts       100.0% (39/39)             100.0% (18/18)    100.0% (8/8)
 src/users.ts          100.0% (25/25)             100.0% (7/7)      100.0% (6/6)
 src/validate.ts       100.0% (75/75)             100.0% (83/83)    100.0% (10/10)
-TOTAL                  99.6% (844/847)            95.0% (494/520)   98.1% (151/154)
+TOTAL                  99.6% (850/853)            95.0% (496/522)   98.1% (152/155)
 
 Line coverage 99.6% of code lines against a gate of 85%: PASS
-For reference, Node's raw figure counting every source line: 99.7% (960/963).
+For reference, Node's raw figure counting every source line: 99.7% (971/974).
 
 Tests per file (each file run on its own):
   accounts.test.ts        3  integration (process)
   api.test.ts             6  integration (HTTP)
-  auth.test.ts           13  integration (HTTP)
+  auth.test.ts           14  integration (HTTP)
   config.test.ts          4  unit
   contract.test.ts       21  contract (OpenAPI)
   domain.test.ts          8  integration (HTTP)
@@ -46,7 +46,7 @@ Tests per file (each file run on its own):
   roles.test.ts          62  integration (HTTP)
   shutdown.test.ts        3  integration (process)
   static.test.ts          4  unit
-  throttle.test.ts        4  unit
-  total integration: 112
-  total unit: 21
+  throttle.test.ts        5  unit
+  total integration: 113
+  total unit: 22
   total contract: 21

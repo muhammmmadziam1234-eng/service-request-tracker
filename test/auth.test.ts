@@ -120,6 +120,16 @@ test('five failed logins block that username from that address for 15 minutes, e
   app.clock.t += 15 * 60_000;
   assert.equal((await app.client().login('casey')).status, 200);
 });
+test('parallel sign-in attempts cannot get around the limit: at most five are checked, and the rest are refused', async t => {
+  const app = await startApp(t);
+  const attempts = await Promise.all(Array.from({length: 30}, (_, i) =>
+    app.client().call('/api/login', {method: 'POST', body: {username: 'riley', password: i === 17 ? DEMO_PASSWORD : 'wrong-' + i}, csrf: false})));
+  const checked = attempts.filter(a => a.status !== 429);
+  assert.ok(checked.length <= 5, checked.length + ' attempts were checked, the limit is 5');
+  assert.equal(attempts.filter(a => a.status === 429).length, 30 - checked.length);
+  for (const refused of attempts.filter(a => a.status === 429)) assert.ok(Number(refused.headers.get('retry-after')) > 0);
+  assert.equal((await app.client().login('casey')).status, 200, 'another user is not affected');
+});
 test('a hash made with a lower cost is upgraded to the current cost at the next successful sign-in, and only then', async t => {
   const app = await startApp(t), stored = () => (app.db.prepare("SELECT password_hash FROM users WHERE username='casey'").get() as {password_hash: string}).password_hash;
   const cheap = await hashPassword(DEMO_PASSWORD, {N: 2048, r: 8, p: 1});

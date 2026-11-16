@@ -1,8 +1,9 @@
 FROM node:24-slim
 
-# Demo-friendly defaults. REQUEST_DB lives on the /data volume so requests survive a restart.
-# The demo accounts are seeded into an empty database; set SEED_DEMO=0 for anything real.
-ENV HOST=0.0.0.0 PORT=4180 REQUEST_DB=/data/requests.sqlite
+# REQUEST_DB lives on the /data volume so requests survive a restart.
+# The image does not seed the demo accounts: they share a published password and this server listens on every interface.
+# compose.yaml turns them on for the local demo, where the port is published on loopback only.
+ENV HOST=0.0.0.0 PORT=4180 REQUEST_DB=/data/requests.sqlite SEED_DEMO=0
 
 WORKDIR /app
 # Nothing is installed: the server uses only what Node 24 ships (TypeScript is stripped at load time),

@@ -23,7 +23,7 @@ flowchart LR
   subgraph proc["One Node 24 process (src/)"]
     server["server.ts<br/>route table, security headers,<br/>request id, JSON log line"]
     auth["auth.ts + passwords.ts<br/>sessions, CSRF, scrypt"]
-    throttle["throttle.ts<br/>5 failures per 15 min"]
+    throttle["throttle.ts<br/>5 attempts per 15 min"]
     store["store.ts + validate.ts<br/>roles, revisions, history"]
     db[("SQLite via node:sqlite<br/>migrations 001 to 003")]
   end
@@ -58,7 +58,7 @@ flowchart LR
 
 | Threat | Defence | Proven by |
 | --- | --- | --- |
-| Guessing passwords | scrypt; 5 failed sign-ins per username and address in 15 minutes give `429` with `Retry-After`, and a locked account refuses even the right password | [`test/throttle.test.ts`](test/throttle.test.ts), [`test/auth.test.ts`](test/auth.test.ts) |
+| Guessing passwords | scrypt; 5 sign-in attempts per username and address in 15 minutes, counted as each one starts so that parallel requests cannot get around the limit (a successful sign-in clears the count), then `429` with `Retry-After`, and a locked account refuses even the right password | [`test/throttle.test.ts`](test/throttle.test.ts), [`test/auth.test.ts`](test/auth.test.ts) |
 | Learning which usernames exist | An unknown username is verified against a dummy hash and gets the same `401` text as a wrong password (timing itself is not measured by a test) | [`test/auth.test.ts`](test/auth.test.ts) |
 | A copied database | Passwords are scrypt hashes; session tokens are stored as SHA-256 only | [`test/auth.test.ts`](test/auth.test.ts) |
 | Script injection | Strict CSP (`default-src 'self'`, no inline script or style), server values rendered with `textContent` only, `HttpOnly` cookie | [`test/static.test.ts`](test/static.test.ts), [`e2e/ui.test.ts`](e2e/ui.test.ts) |
@@ -137,7 +137,7 @@ The password is read from the environment, never from the arguments, and is stor
 | `REQUEST_DB` | `data/requests.sqlite` | the SQLite file (`:memory:` for experiments) |
 | `COOKIE_SECURE` | `0` | `1` adds `Secure` to the session cookie; set it when served over HTTPS |
 | `LOG` | `on` | `off` silences the request log |
-| `SEED_DEMO` | `1` | `0` skips the demo accounts and sample requests |
+| `SEED_DEMO` | `1` (`0` in the Docker image) | `0` skips the demo accounts and sample requests |
 
 Binding beyond localhost with the demo accounts or without `COOKIE_SECURE=1` prints a warning at start. `SIGTERM` and `SIGINT` stop accepting connections, close idle ones, give running requests up to 5 seconds, close the database and exit 0 (the test sends `SIGTERM`; `SIGINT` uses the same handler).
 
@@ -147,14 +147,16 @@ Binding beyond localhost with the demo accounts or without `COOKIE_SECURE=1` pri
 docker compose up --build      # http://127.0.0.1:4180, data in the relay-data volume
 ```
 
-The image is `node:24-slim` plus the source, runs as the unprivileged `node` user, keeps the database on the `/data` volume and has a `HEALTHCHECK` that fetches `/healthz`. The compose file publishes the port on loopback only. I had no Docker daemon while writing this, so the image has not been built here: I laid out exactly the files the `Dockerfile` copies and ran them outside Docker (`/healthz`, `/readyz`, `/openapi.json` and the health-check command all answered), and the `docker` job in [`.github/workflows/test.yml`](.github/workflows/test.yml) is where the build itself runs.
+The image is `node:24-slim` plus the source, runs as the unprivileged `node` user, keeps the database on the `/data` volume and has a `HEALTHCHECK` that fetches `/healthz`. The compose file publishes the port on loopback only and turns the demo accounts on. **The image on its own does not seed them** (`SEED_DEMO=0`), because it listens on every interface; a plain `docker run` therefore starts with no accounts, and `docker run -e SEED_DEMO=1 …` is for a machine only you can reach.
+
+The `docker` job in [`.github/workflows/test.yml`](.github/workflows/test.yml) builds the image, starts it, waits for `/healthz` to answer 200, then checks that `/readyz` answers 200 and that `/api/requests` answers 401 without a session. It has passed on GitHub's runners; there was no Docker daemon in the environment where the code was written, so that job is the only place the image has been built.
 
 ## Quality gates
 
 ```sh
 npm ci                  # development tools only: TypeScript, Playwright core, axe-core, Ajv
 npm run typecheck       # tsc: strict, noUncheckedIndexedAccess, erasableSyntaxOnly; src, tests, scripts and public/ (checkJs)
-npm test                # 154 tests
+npm test                # 156 tests
 npm run coverage        # the same tests with coverage; fails below 85% of code lines in src/
 CHROME_PATH=/path/to/chrome npm run test:e2e    # 12 browser tests
 npm audit --omit=dev    # production dependencies
@@ -162,8 +164,8 @@ npm audit --omit=dev    # production dependencies
 
 | Check | Result | Recorded in |
 | --- | --- | --- |
-| Tests | 154 passed: 21 unit, 112 integration (HTTP and process), 21 contract | [`docs/evidence/coverage.txt`](docs/evidence/coverage.txt) |
-| Coverage of `src/` | 99.6% of code lines (844 of 847), 95.0% of branches, 98.1% of functions; gate 85% | [`docs/evidence/coverage.txt`](docs/evidence/coverage.txt) |
+| Tests | 156 passed: 22 unit, 113 integration (HTTP and process), 21 contract | [`docs/evidence/coverage.txt`](docs/evidence/coverage.txt) |
+| Coverage of `src/` | 99.6% of code lines (850 of 853), 95.0% of branches, 98.1% of functions; gate 85% | [`docs/evidence/coverage.txt`](docs/evidence/coverage.txt) |
 | Browser tests | 12 passed, Chromium | [`docs/evidence/e2e.txt`](docs/evidence/e2e.txt) |
 | `npm audit --omit=dev` | 0 vulnerabilities (there are no runtime dependencies) | [`docs/evidence/audit.txt`](docs/evidence/audit.txt) |
 

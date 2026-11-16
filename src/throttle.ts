@@ -1,6 +1,11 @@
 export interface ThrottleDecision {allowed: boolean; retryAfterSeconds: number}
 export interface LoginThrottle {
   check(key: string): ThrottleDecision;
+  /**
+   * Asks permission for one attempt and, when it is allowed, counts it straight away. Use this before the slow password check:
+   * counting only afterwards lets a burst of parallel attempts all pass the check first. Call reset() after a successful sign-in.
+   */
+  begin(key: string): ThrottleDecision;
   fail(key: string): void;
   reset(key: string): void;
   readonly size: number;
@@ -8,7 +13,8 @@ export interface LoginThrottle {
 export interface ThrottleOptions {now?: () => number; limit?: number; windowMs?: number; maxKeys?: number}
 
 /**
- * Sliding-window failure counter held in memory: `limit` failures per `windowMs` for one key (username + address).
+ * Sliding-window attempt counter held in memory: `limit` attempts per `windowMs` for one key (username + address). An attempt is
+ * counted when it starts and cleared by a successful sign-in, so the limit holds even when attempts arrive in parallel.
  * Blocked attempts are not counted, so hammering a locked account cannot extend the lock. The table is capped.
  */
 export function createLoginThrottle({now = Date.now, limit = 5, windowMs = 15 * 60_000, maxKeys = 10_000}: ThrottleOptions = {}): LoginThrottle {
@@ -23,6 +29,11 @@ export function createLoginThrottle({now = Date.now, limit = 5, windowMs = 15 * 
       const t = now(), list = recent(key, t);
       if (list.length < limit) return {allowed: true, retryAfterSeconds: 0};
       return {allowed: false, retryAfterSeconds: Math.max(1, Math.ceil((list[list.length - limit]! + windowMs - t) / 1000))};
+    },
+    begin(key) {
+      const decision = this.check(key);
+      if (decision.allowed) this.fail(key);
+      return decision;
     },
     fail(key) {
       const t = now(), list = recent(key, t);

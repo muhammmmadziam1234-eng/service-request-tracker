@@ -38,3 +38,11 @@ test('the table is bounded, so random usernames cannot grow memory without limit
   for (let i = 0; i < 500; i++) throttle.fail('user' + i + '|ip');
   assert.ok(throttle.size <= 50, 'size ' + throttle.size);
 });
+test('begin() counts the attempt at once, so five attempts that start together leave no room for a sixth', () => {
+  const {throttle} = setup();
+  const results = Array.from({length: 30}, () => throttle.begin('riley|a').allowed);
+  assert.equal(results.filter(Boolean).length, 5);
+  assert.equal(throttle.check('riley|a').allowed, false);
+  throttle.reset('riley|a');
+  assert.equal(throttle.begin('riley|a').allowed, true, 'a successful sign-in clears the count');
+});
